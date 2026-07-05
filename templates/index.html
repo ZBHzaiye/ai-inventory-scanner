@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>配件仓库扫描入库</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #111214;
+    --card:    #1c1e22;
+    --border:  #2a2d33;
+    --orange:  #f97316;
+    --orange2: #ea6a0a;
+    --green:   #22c55e;
+    --red:     #ef4444;
+    --text:    #e5e7eb;
+    --muted:   #6b7280;
+    --radius:  8px;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px;
+    min-height: 100vh;
+  }
+
+  /* ── Layout ── */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .topbar {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .topbar h1 { font-size: 17px; font-weight: 700; flex: 1; }
+  .topbar .subtitle { font-size: 12px; color: var(--muted); }
+
+  .back-btn {
+    background: none;
+    border: none;
+    color: var(--orange);
+    font-size: 22px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+  }
+
+  .content { padding: 16px; padding-bottom: 96px; }
+
+  /* ── Cards ── */
+  .batch-grid { display: grid; gap: 12px; }
+  .batch-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .batch-card:active { border-color: var(--orange); }
+  .batch-card .bname { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .batch-card .bmeta { font-size: 12px; color: var(--muted); display: flex; gap: 12px; }
+  .batch-card .bcount { color: var(--orange); font-weight: 700; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 48px;
+    padding: 0 20px;
+    border-radius: var(--radius);
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s;
+    white-space: nowrap;
+  }
+  .btn:active { opacity: .8; }
+  .btn-primary   { background: var(--orange); color: #fff; }
+  .btn-success   { background: var(--green);  color: #fff; }
+  .btn-danger    { background: var(--red);    color: #fff; }
+  .btn-ghost     { background: var(--border); color: var(--text); }
+  .btn-sm        { min-height: 36px; padding: 0 14px; font-size: 13px; }
+  .btn-block     { width: 100%; }
+  .btn:disabled  { opacity: .45; cursor: not-allowed; }
+
+  .fab {
+    position: fixed;
+    bottom: 24px;
+    right: 20px;
+    z-index: 20;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--orange);
+    color: #fff;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(249,115,22,.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ── Forms ── */
+  .form-group { margin-bottom: 14px; }
+  .form-group label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .form-control {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 16px;
+    padding: 12px 14px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .form-control:focus { border-color: var(--orange); }
+
+  /* ── Photo area ── */
+  .photo-area {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    min-height: 180px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: border-color .15s;
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 14px;
+  }
+  .photo-area:active { border-color: var(--orange); }
+  .photo-area img {
+    width: 100%;
+    max-height: 300px;
+    object-fit: contain;
+    display: none;
+  }
+  .photo-area.has-image img   { display: block; }
+  .photo-area.has-image .hint { display: none; }
+  .photo-area .hint { color: var(--muted); text-align: center; font-size: 14px; pointer-events: none; }
+  .photo-area .hint span { font-size: 40px; display: block; margin-bottom: 6px; }
+  #fileInput { display: none; }
+
+  /* ── Section headers ── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .section-title { font-size: 15px; font-weight: 700; color: var(--orange); }
+
+  /* ── Item list ── */
+  .item-list { display: grid; gap: 10px; }
+  .item-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+  }
+  .item-top { display: flex; align-items: flex-start; gap: 10px; }
+  .item-thumb {
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+    object-fit: cover;
+    background: var(--border);
+    cursor: pointer;
+  }
+  .item-thumb-placeholder {
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+    background: var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: var(--muted);
+  }
+  .item-info { flex: 1; min-width: 0; }
+  .item-pn { font-size: 15px; font-weight: 700; color: var(--orange); word-break: break-all; }
+  .item-name { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .item-qty { font-size: 13px; margin-top: 4px; }
+  .item-qty span { color: var(--green); font-weight: 700; }
+
+  .item-location-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .location-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 14px;
+    padding: 6px 10px;
+    outline: none;
+  }
+  .location-input:focus { border-color: var(--orange); }
+
+  .item-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .img-thumbnails {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .img-thumbnails img {
+    width: 50px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+  }
+
+  /* ── Divider ── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 20px 0;
+  }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 24px;
+    font-size: 14px;
+    z-index: 999;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .25s;
+    white-space: nowrap;
+    max-width: 90vw;
+  }
+  #toast.show { opacity: 1; }
+  #toast.success { background: var(--green); }
+  #toast.error   { background: var(--red); }
+
+  /* ── Modal ── */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.7);
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 20px;
+    width: 100%;
+    max-width: 420px;
+  }
+  .modal h2 { font-size: 17px; font-weight: 700; margin-bottom: 12px; }
+  .modal p { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 16px; }
+  .modal .modal-btns { display: grid; gap: 10px; }
+
+  /* ── Image lightbox ── */
+  #lightbox {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.92);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  #lightbox.open { display: flex; }
+  #lightbox img { max-width: 95vw; max-height: 92vh; object-fit: contain; border-radius: 4px; }
+  #lightbox-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 32px;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  /* ── Loading spinner ── */
+  .spinner {
+    width: 22px;
+    height: 22px;
+    border: 3px solid rgba(255,255,255,.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Export bar ── */
+  .export-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .export-bar .btn { flex: 1; }
+
+  /* ── Empty state ── */
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 40px 0;
+    font-size: 14px;
+  }
+  .empty .icon { font-size: 40px; margin-bottom: 10px; }
+
+  /* ── Scan step indicators ── */
+  .step-label {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  .step-active { color: var(--orange); }
+
+  /* ── Badge ── */
+  .badge {
+    display: inline-block;
+    background: var(--orange);
+    color: #fff;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 8px;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     VIEW 1: Batch List
+═══════════════════════════════════════════════════════ -->
+<div id="view-batches" class="view active">
+  <div class="topbar">
+    <h1>📦 仓库入库系统</h1>
+  </div>
+  <div class="content">
+    <div id="batch-list" class="batch-grid">
+      <div class="empty"><div class="icon">📋</div>暂无批次，点击右下角创建</div>
+    </div>
+  </div>
+  <button class="fab" onclick="openNewBatchModal()" title="新建批次">＋</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     VIEW 2: Scan + Item list
+═══════════════════════════════════════════════════════ -->
+<div id="view-scan" class="view">
+  <div class="topbar">
+    <button class="back-btn" onclick="goHome()">‹</button>
+    <div>
+      <h1 id="scan-batch-name">批次名称</h1>
+      <div class="subtitle" id="scan-batch-subtitle"></div>
+    </div>
+  </div>
+  <div class="content">
+
+    <!-- Photo upload -->
+    <div class="section-header">
+      <div class="section-title">① 拍照 / 选图</div>
+    </div>
+    <div class="photo-area" id="photoArea" onclick="document.getElementById('fileInput').click()">
+      <input type="file" id="fileInput" accept="image/*">
+      <img id="photoPreview" src="" alt="预览">
+      <div class="hint">
+        <span>📷</span>
+        点击拍照或选择图片
+      </div>
+    </div>
+
+    <button class="btn btn-primary btn-block" id="recognizeBtn" onclick="doRecognize()" disabled>
+      <span id="recognizeIcon">🔍</span>
+      <span id="recognizeText">识别标签</span>
+    </button>
+
+    <hr class="divider">
+
+    <!-- Form -->
+    <div class="section-header">
+      <div class="section-title">② 填写信息</div>
+    </div>
+    <div class="form-group">
+      <label>物料号</label>
+      <input class="form-control" id="f-pn" type="text" placeholder="如 3701-01515" autocomplete="off" autocorrect="off" spellcheck="false">
+    </div>
+    <div class="form-group">
+      <label>中文名称</label>
+      <input class="form-control" id="f-name" type="text" placeholder="配件中文名称">
+    </div>
+    <div class="form-group">
+      <label>数量</label>
+      <input class="form-control" id="f-qty" type="number" placeholder="0" inputmode="numeric">
+    </div>
+    <div class="form-group">
+      <label>库位</label>
+      <input class="form-control" id="f-loc" type="text" placeholder="如 A-01-03" autocomplete="off" autocorrect="off" spellcheck="false">
+    </div>
+
+    <button class="btn btn-success btn-block" id="submitBtn" onclick="doSubmit()">
+      ✓ 提交入库
+    </button>
+
+    <hr class="divider">
+
+    <!-- Item list -->
+    <div class="section-header">
+      <div class="section-title">③ 当前清单</div>
+      <div class="export-bar" style="margin:0;">
+        <button class="btn btn-ghost btn-sm" onclick="exportExcel()">📊 Excel</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportZip()">🗜 ZIP</button>
+      </div>
+    </div>
+    <div id="item-list" class="item-list">
+      <div class="empty"><div class="icon">📝</div>尚未录入任何条目</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: New batch
+═══════════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="modal-new-batch">
+  <div class="modal">
+    <h2>新建批次</h2>
+    <div class="form-group">
+      <label>批次名称</label>
+      <input class="form-control" id="new-batch-name" type="text" placeholder="如 2026-06-26 撒马尔罕仓库">
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-primary" onclick="createBatch()">创建</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-new-batch')">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: Duplicate
+═══════════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="modal-dup">
+  <div class="modal">
+    <h2>⚠️ 检测到重复物料</h2>
+    <p id="dup-info"></p>
+    <div class="modal-btns">
+      <button class="btn btn-primary" onclick="doDupMerge()">① 累加数量 + 追加图片</button>
+      <button class="btn btn-ghost" onclick="doDupNew()">② 作为新条目录入</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-dup')">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: Delete item confirm
+═══════════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="modal-del">
+  <div class="modal">
+    <h2>删除确认</h2>
+    <p>确定要删除该条目及其所有图片吗？此操作不可撤销。</p>
+    <div class="modal-btns">
+      <button class="btn btn-danger" onclick="confirmDelete()">确定删除</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-del')">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: Delete batch confirm
+═══════════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="modal-del-batch">
+  <div class="modal">
+    <h2>🗑 删除批次</h2>
+    <p id="del-batch-info"></p>
+    <div class="modal-btns">
+      <button class="btn btn-danger" onclick="confirmDeleteBatch()">确定删除整个批次</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-del-batch')">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Lightbox
+═══════════════════════════════════════════════════════ -->
+<div id="lightbox">
+  <button id="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightbox-img" src="" alt="大图">
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ─── Base path (matches Nginx location prefix) ───────────
+const BASE = '/scan2026';
+
+// ─── State ───────────────────────────────────────────────
+let currentBatchId   = null;
+let currentBatchName = "";
+let pollTimer        = null;
+let pendingDeleteId  = null;
+let dupExistingItem  = null;   // existing item when duplicate detected
+let pendingFormData  = null;   // FormData ready to submit as new item
+let pendingAddQty    = 0;      // quantity from form for merge
+let pendingImageFile = null;   // image File for merge
+
+// ─── View helpers ─────────────────────────────────────────
+function showView(id) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  window.scrollTo(0, 0);
+}
+
+function goHome() {
+  stopPoll();
+  showView("view-batches");
+  loadBatches();
+}
+
+// ─── Toast ────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type = "") {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "show " + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = "", 2500);
+}
+
+// ─── Modal ────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add("open"); }
+function closeModal(id) { document.getElementById(id).classList.remove("open"); }
+
+// ─── Lightbox ─────────────────────────────────────────────
+function openLightbox(src) {
+  document.getElementById("lightbox-img").src = src;
+  document.getElementById("lightbox").classList.add("open");
+}
+function closeLightbox() {
+  document.getElementById("lightbox").classList.remove("open");
+}
+document.getElementById("lightbox").addEventListener("click", function(e) {
+  if (e.target === this) closeLightbox();
+});
+
+// ─── API helpers ──────────────────────────────────────────
+async function apiFetch(url, opts = {}) {
+  try {
+    const res = await fetch(BASE + url, opts);
+    const json = await res.json();
+    return json;
+  } catch (e) {
+    return { success: false, error: "网络错误: " + e.message };
+  }
+}
+
+// ═══ Batches ══════════════════════════════════════════════
+
+async function loadBatches() {
+  const res = await apiFetch("/api/batches");
+  const el = document.getElementById("batch-list");
+  if (!res.success) { el.innerHTML = `<div class="empty">加载失败: ${res.error}</div>`; return; }
+  if (!res.data.length) {
+    el.innerHTML = `<div class="empty"><div class="icon">📋</div>暂无批次，点击右下角创建</div>`;
+    return;
+  }
+  el.innerHTML = res.data.map(b => `
+    <div class="batch-card" onclick="openBatch(${b.id}, '${escHtml(b.name)}')">
+      <div class="bname">${escHtml(b.name)}</div>
+      <div class="bmeta">
+        <span>${fmtDate(b.created_at)}</span>
+        <span class="bcount">${b.item_count} 条</span>
+        <button class="btn btn-danger btn-sm" style="margin-left:auto;min-height:30px;padding:0 10px;font-size:12px;"
+                onclick="event.stopPropagation(); openDeleteBatchModal(${b.id}, '${escHtml(b.name)}')">🗑 删除</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function openNewBatchModal() {
+  document.getElementById("new-batch-name").value = "";
+  openModal("modal-new-batch");
+  setTimeout(() => document.getElementById("new-batch-name").focus(), 100);
+}
+
+document.getElementById("new-batch-name").addEventListener("keydown", e => {
+  if (e.key === "Enter") createBatch();
+});
+
+async function createBatch() {
+  const name = document.getElementById("new-batch-name").value.trim();
+  if (!name) { toast("请输入批次名称", "error"); return; }
+  const res = await apiFetch("/api/batches", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.success) { toast(res.error, "error"); return; }
+  closeModal("modal-new-batch");
+  toast("批次已创建", "success");
+  openBatch(res.data.id, res.data.name);
+}
+
+function openBatch(id, name) {
+  currentBatchId   = id;
+  currentBatchName = name;
+  document.getElementById("scan-batch-name").textContent = name;
+  document.getElementById("scan-batch-subtitle").textContent = `批次 #${id}`;
+  resetScanForm();
+  showView("view-scan");
+  loadItems();
+  startPoll();
+}
+
+// ═══ Photo & Recognize ═══════════════════════════════════
+
+document.getElementById("fileInput").addEventListener("change", function() {
+  const file = this.files[0];
+  if (!file) return;
+  pendingImageFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const prev = document.getElementById("photoPreview");
+    prev.src = e.target.result;
+    document.getElementById("photoArea").classList.add("has-image");
+    document.getElementById("recognizeBtn").disabled = false;
+  };
+  reader.readAsDataURL(file);
+});
+
+async function doRecognize() {
+  const file = document.getElementById("fileInput").files[0];
+  if (!file) { toast("请先选择图片", "error"); return; }
+
+  const btn  = document.getElementById("recognizeBtn");
+  const icon = document.getElementById("recognizeIcon");
+  const text = document.getElementById("recognizeText");
+  btn.disabled = true;
+  icon.innerHTML = '<div class="spinner"></div>';
+  text.textContent = "识别中…";
+
+  const fd = new FormData();
+  fd.append("image", file);
+
+  const res = await apiFetch("/api/recognize", { method: "POST", body: fd });
+  btn.disabled = false;
+  icon.textContent = "🔍";
+  text.textContent = "识别标签";
+
+  if (!res.success) { toast("识别失败: " + res.error, "error"); return; }
+
+  const d = res.data;
+  if (d.part_number) document.getElementById("f-pn").value   = d.part_number;
+  if (d.name_cn)     document.getElementById("f-name").value = d.name_cn;
+  if (d.quantity)    document.getElementById("f-qty").value  = d.quantity;
+  toast("识别成功！请确认并填写库位", "success");
+  document.getElementById("f-loc").focus();
+}
+
+// ═══ Submit ═══════════════════════════════════════════════
+
+async function doSubmit() {
+  const pn  = document.getElementById("f-pn").value.trim();
+  const nm  = document.getElementById("f-name").value.trim();
+  const qty = parseInt(document.getElementById("f-qty").value) || 0;
+  const loc = document.getElementById("f-loc").value.trim();
+
+  if (!pn)  { toast("请填写物料号", "error"); return; }
+  if (!pendingImageFile) { toast("请先选择图片", "error"); return; }
+
+  // Duplicate check
+  const dupRes = await apiFetch(`/api/batches/${currentBatchId}/check_duplicate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ part_number: pn }),
+  });
+  if (!dupRes.success) { toast(dupRes.error, "error"); return; }
+
+  if (dupRes.data.duplicate) {
+    dupExistingItem = dupRes.data.item;
+    pendingAddQty   = qty;
+    document.getElementById("dup-info").innerHTML =
+      `物料号 <strong>${escHtml(pn)}</strong> 在当前批次已存在：<br>
+       当前数量 <strong style="color:var(--green)">${dupExistingItem.quantity}</strong>，
+       本次新增 <strong style="color:var(--orange)">${qty}</strong>，
+       合并后共 <strong style="color:var(--green)">${dupExistingItem.quantity + qty}</strong>。`;
+    // Build pendingFormData for new-entry path
+    pendingFormData = new FormData();
+    pendingFormData.append("part_number", pn);
+    pendingFormData.append("name_cn",     nm);
+    pendingFormData.append("quantity",    qty);
+    pendingFormData.append("location",    loc);
+    pendingFormData.append("image",       pendingImageFile);
+    openModal("modal-dup");
+    return;
+  }
+
+  // No duplicate — submit directly
+  await submitNewItem(pn, nm, qty, loc);
+}
+
+async function submitNewItem(pn, nm, qty, loc) {
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.textContent = "提交中…";
+
+  const fd = new FormData();
+  fd.append("part_number", pn);
+  fd.append("name_cn",     nm);
+  fd.append("quantity",    qty);
+  fd.append("location",    loc);
+  fd.append("image",       pendingImageFile);
+
+  const res = await apiFetch(`/api/batches/${currentBatchId}/items`, { method: "POST", body: fd });
+  btn.disabled = false;
+  btn.textContent = "✓ 提交入库";
+
+  if (!res.success) { toast("提交失败: " + res.error, "error"); return; }
+  toast("✓ 录入成功", "success");
+  resetScanForm();
+  loadItems();
+}
+
+async function doDupMerge() {
+  closeModal("modal-dup");
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.textContent = "提交中…";
+
+  const fd = new FormData();
+  fd.append("quantity", pendingAddQty);
+  fd.append("location", document.getElementById("f-loc").value.trim());
+  fd.append("image",    pendingImageFile);
+
+  const res = await apiFetch(`/api/items/${dupExistingItem.id}/merge`, { method: "PUT", body: fd });
+  btn.disabled = false;
+  btn.textContent = "✓ 提交入库";
+
+  if (!res.success) { toast("合并失败: " + res.error, "error"); return; }
+  toast("✓ 数量已累加", "success");
+  resetScanForm();
+  loadItems();
+}
+
+async function doDupNew() {
+  closeModal("modal-dup");
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.textContent = "提交中…";
+
+  const res = await apiFetch(`/api/batches/${currentBatchId}/items`, {
+    method: "POST",
+    body: pendingFormData,
+  });
+  btn.disabled = false;
+  btn.textContent = "✓ 提交入库";
+
+  if (!res.success) { toast("提交失败: " + res.error, "error"); return; }
+  toast("✓ 已作为新条目录入", "success");
+  resetScanForm();
+  loadItems();
+}
+
+function resetScanForm() {
+  document.getElementById("fileInput").value = "";
+  document.getElementById("photoPreview").src = "";
+  document.getElementById("photoArea").classList.remove("has-image");
+  document.getElementById("recognizeBtn").disabled = true;
+  document.getElementById("f-pn").value   = "";
+  document.getElementById("f-name").value = "";
+  document.getElementById("f-qty").value  = "";
+  document.getElementById("f-loc").value  = "";
+  pendingImageFile = null;
+  pendingFormData  = null;
+  dupExistingItem  = null;
+}
+
+// ═══ Items list ═══════════════════════════════════════════
+
+async function loadItems() {
+  if (!currentBatchId) return;
+  const res = await apiFetch(`/api/batches/${currentBatchId}/items`);
+  if (!res.success) return;
+
+  const el = document.getElementById("item-list");
+  if (!res.data.length) {
+    el.innerHTML = `<div class="empty"><div class="icon">📝</div>尚未录入任何条目</div>`;
+    return;
+  }
+
+  el.innerHTML = res.data.map(item => {
+    const firstImg = item.images[0];
+    const thumbSrc = firstImg ? `${BASE}/uploads/${encodeURIComponent(firstImg.file_name)}` : null;
+    const thumbHtml = thumbSrc
+      ? `<img class="item-thumb" src="${thumbSrc}" alt="缩略图"
+              onclick="openLightbox(this.src)" loading="lazy">`
+      : `<div class="item-thumb-placeholder">📦</div>`;
+
+    const extraImgs = item.images.slice(1).map(img =>
+      `<img src="${BASE}/uploads/${encodeURIComponent(img.file_name)}" alt="${escHtml(img.file_name)}"
+            onclick="openLightbox(this.src)" loading="lazy">`
+    ).join("");
+
+    const extraImgsHtml = item.images.length > 1
+      ? `<div class="img-thumbnails">${
+          item.images.map(img =>
+            `<img src="${BASE}/uploads/${encodeURIComponent(img.file_name)}"
+                  onclick="openLightbox(this.src)" loading="lazy">`
+          ).join("")
+        }</div>`
+      : "";
+
+    return `
+      <div class="item-card" id="item-${item.id}">
+        <div class="item-top">
+          ${thumbHtml}
+          <div class="item-info">
+            <div class="item-pn">${escHtml(item.part_number)}</div>
+            <div class="item-name">${escHtml(item.name_cn) || '<span style="color:var(--muted)">—</span>'}</div>
+            <div class="item-qty">数量：<span>${item.quantity}</span></div>
+          </div>
+        </div>
+        ${item.images.length > 1 ? extraImgsHtml : ""}
+        <div class="item-location-row">
+          <input class="location-input" type="text" value="${escHtml(item.location)}"
+                 placeholder="库位（多个用逗号分隔）" id="loc-${item.id}"
+                 onkeydown="if(event.key==='Enter') saveLocation(${item.id})">
+          <button class="btn btn-ghost btn-sm" onclick="saveLocation(${item.id})">保存</button>
+        </div>
+        ${item.location ? `<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;">${
+          item.location.split(',').map((l,i) => l.trim() ? `<span style="background:var(--border);border-radius:4px;padding:2px 8px;font-size:12px;color:var(--muted);">库位${i+1}: ${escHtml(l.trim())}</span>` : ''
+          ).join('')
+        }</div>` : ''}
+        <div class="item-footer">
+          <button class="btn btn-danger btn-sm" onclick="openDeleteModal(${item.id})">🗑 删除</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function saveLocation(itemId) {
+  const loc = document.getElementById(`loc-${itemId}`).value.trim();
+  const res = await apiFetch(`/api/items/${itemId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ location: loc }),
+  });
+  if (!res.success) { toast("保存失败: " + res.error, "error"); return; }
+  toast("库位已保存", "success");
+}
+
+function openDeleteModal(itemId) {
+  pendingDeleteId = itemId;
+  openModal("modal-del");
+}
+
+async function confirmDelete() {
+  closeModal("modal-del");
+  if (!pendingDeleteId) return;
+  const res = await apiFetch(`/api/items/${pendingDeleteId}`, { method: "DELETE" });
+  if (!res.success) { toast("删除失败: " + res.error, "error"); return; }
+  toast("已删除", "success");
+  const card = document.getElementById(`item-${pendingDeleteId}`);
+  if (card) card.remove();
+  pendingDeleteId = null;
+  loadItems();
+}
+
+// ─── Delete batch ─────────────────────────────────────────
+let pendingDeleteBatchId = null;
+
+function openDeleteBatchModal(id, name) {
+  pendingDeleteBatchId = id;
+  document.getElementById("del-batch-info").innerHTML =
+    `确定要删除批次 <strong>「${escHtml(name)}」</strong> 吗？<br>
+     该批次下的<strong style="color:var(--red)">所有条目和图片将永久删除</strong>，此操作不可撤销。`;
+  openModal("modal-del-batch");
+}
+
+async function confirmDeleteBatch() {
+  closeModal("modal-del-batch");
+  if (!pendingDeleteBatchId) return;
+  const res = await apiFetch(`/api/batches/${pendingDeleteBatchId}`, { method: "DELETE" });
+  pendingDeleteBatchId = null;
+  if (!res.success) { toast("删除失败: " + res.error, "error"); return; }
+  toast("批次已删除", "success");
+  loadBatches();
+}
+
+// ═══ Poll ════════════════════════════════════════════════
+
+function startPoll() {
+  stopPoll();
+  pollTimer = setInterval(loadItems, 5000);
+}
+function stopPoll() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+// ═══ Export ══════════════════════════════════════════════
+
+function exportExcel() {
+  window.location.href = `${BASE}/api/batches/${currentBatchId}/export/excel`;
+}
+function exportZip() {
+  window.location.href = `${BASE}/api/batches/${currentBatchId}/export/zip`;
+}
+
+// ═══ Utils ═══════════════════════════════════════════════
+
+function escHtml(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function fmtDate(s) {
+  if (!s) return "";
+  return s.replace("T", " ").slice(0, 16);
+}
+
+// ═══ Init ════════════════════════════════════════════════
+
+loadBatches();
+</script>
+</body>
+</html>

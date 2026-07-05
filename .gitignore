@@ -1,0 +1,23 @@
+# 环境变量（含 API Key，绝对不能上传）
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 本地数据（数据库 + 图片）
+data/
+
+# IDE / 系统
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
